@@ -1,0 +1,823 @@
+openapi: 3.0.0
+info:
+  title: pawaPay Custom APIs for Yango
+  description: |
+    ## Introduction
+
+    ### About
+    
+    This documenation describes the pawaPay Mobile Money APIs which are developed and customized for Yango. 
+    
+    ### API Base URL
+    
+    **[https://yango.pawapay.cloud/](https://yango.pawapay.cloud/)**
+
+    ### Authentication
+    Our authentication mechanism requires clients to include a unique API key in the `X-API-KEY` field of the HTTP request header, providing a straightforward and secure method for data transactions.
+
+    
+    ## Payout (Disbursement)
+
+    ### Send Money
+
+    You can disburse money from a Yango Partner's pawaPay wallet to an end user's mobile money wallet. After we have received a payout request, we send it to the mobile network operator (MNO). When the  mobile network operator (MNO) finalizes your payout request, it will inform pawaPay. You check the status of your payout request through our **[Get Payout Status and Details](/#operation/getPayout)** endpoint. 
+
+    Your payout request can have one of the following statuses in the pawaPay system:
+
+    Status | Description
+    -------|------------
+    `ACCEPTED` | The payout request has been accepted by pawaPay for processing.
+    `SUBMITTED` | The payout request has been submitted to the mobile network operator (MNO) and is being processed.
+    `COMPLETED` | The payout request has been successful. This is a **final state**.
+    `FAILED` | The payout request has failed. This is a **final state**. 
+
+    ### Get Status
+
+      To check the latest status of a transaction, you need to implement a status recheck mechanism using our  [Get Payout Status and Details](/#operation/getPayout) operation. 
+    
+    ## Failure Codes
+    
+    ### Technical failure codes
+
+    Technical failures should not happen during live operation and are intended to provide clear information during the development of the integration.
+
+    Failure Code | Description
+    -------------|------------
+    INVALID_RECIPIENT_FORMAT | The financial address for the recipient is in an unrecognizable format. Please refer to <code>recipient</code> in [Mobile Money Disbursement Request](/#operation/createPayout)
+    INVALID_AMOUNT | The amount is in an unrecognizable format. Please refer to <code>amount</code> in [Mobile Money Disbursement Request](/#operation/createPayout).
+    AMOUNT_TOO_SMALL | The specified amount is smaller than the minimum allowed by the mobile network operator (MNO) specified as the correspondent.
+    AMOUNT_TOO_LARGE | The specified amount is larger than the maximum allowed by the mobile network operator (MNO) specified as the correspondent.
+    PARAMETER_INVALID | An invalid parameter was found as part of the request.
+    AUTHENTICATION_ERROR | The token specified for authentication is not valid or missing.
+    INVALID_INPUT  | The system was unable to parse the payload of the request.
+
+    ### Transaction failure codes
+
+    Transaction failures are expected to happen during live operation and are intended to provide clear information as to why a particular payment was not possible to complete.
+
+    Failure Code | Description
+    -------------|------------
+    BALANCE_INSUFFICIENT | The balance of the Yango Partner's pawaPay wallet does not have the funds to initiate this payout.
+    RECIPIENT_NOT_FOUND | The phone number (MSISDN) specified as the recipient, does not belong to the mobiler network operator (MNO) specified as the correspondent.
+    RECIPIENT_NOT_ALLOWED_TO_RECEIVE | The recipient has reached a limit on their wallet that stops them from being able to accept this payout. _Example: The customers wallet is able to hold up to 1 000 000 and the payout would take their balance over this limit._
+    OTHER_ERROR | The payment failed due to an unknown error.
+    CORRESPONDENT_TEMPORARILY_UNAVAILABLE | The mobile network operator specified as the correspondent is currently experiencing an outage and processing of payments has been temporarily halted. Please refer to our [Status Page](https://status.pawapay.cloud) for live information about mobile netowrk operator availability. 
+
+
+  contact:
+    name: pawaPay Support
+    email: support@pawapay.co.uk
+  version: v1
+  x-logo:
+    url: https://cdn.prod.website-files.com/62824591015aa314fd308df1/66cf1b87a6a22a3cb5511621_Logo-3.svg
+    href: https://pawapay.io
+    altText: pawaPay logo
+servers:
+  - url: https://yango.pawapay.cloud
+    description: pawaPay Yango API
+security:
+  - apiKeyAuth: []
+tags:
+  - name: payouts
+    x-displayName: Payouts
+    description: Payout Operations
+  - name: other
+    x-displayName: Other APIs
+    description: Other APIs
+
+paths:
+  /api/v1/payouts/{accountId}:
+    post:
+      tags:
+        - payouts
+      summary: Mobile Money Disbursement Request
+      operationId: createPayout
+      parameters:
+        - name: accountId
+          in: path
+          description: <code>accountId</code> of the Yango Partner which has been previously provided by pawaPay after partner's setup via <code>PUT /v1/setup/account</code>
+          required: true
+          style: simple
+          explode: false
+          schema:
+            minLength: 36
+            maxLength: 36
+            type: string
+            format: uuid
+      requestBody:
+        $ref: '#/components/requestBodies/PayoutCreationRequest'
+      responses:
+        '201':
+          description: Request has been processed by pawaPay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payout'
+              examples:
+                ACCEPTED:
+                  value:
+                    payoutId: 8917c346-4791-4285-a416-62f24b6982db
+                    status: ACCEPTED
+                    amount: '123.45'
+                    currency: ZMW
+                    country: ZMB
+                    correspondent: MTN_MOMO_ZMB
+                    msisdn: '256780334452'
+                    statementDescription: From ACME company
+                    created: '2020-10-19T08:17:01Z'
+        '400':
+          description: Request is rejected due to incompatibility with pawaPay API specification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'INVALID_INPUT'
+                    errorMessage: 'Invalid input: Missing required property ''amount'''
+                INVALID_AMOUNT:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'INVALID_AMOUNT'
+                    errorMessage: 'The specified amount is not supported'
+                BALANCE_INSUFFICIENT:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'BALANCE_INSUFFICIENT'
+                    errorMessage: 'The customer’s balance is insufficient to proceed with the payout'
+                INVALID_RECIPIENT_FORMAT:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'INVALID_RECIPIENT_FORMAT'
+                    errorMessage: 'The phone number (MISISDN) specified for the recipient is in an unrecognizable format'
+                AMOUNT_TOO_SMALL:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'AMOUNT_TOO_SMALL'
+                    errorMessage: 'The specified amount is smaller than the minimum allowed by the mobile network operator (MNO) specified as the correspondent'
+                AMOUNT_TOO_LARGE:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'AMOUNT_TOO_LARGE'
+                    errorMessage: 'The specified amount is larger than the maximum allowed by the mobile network operator (MNO) specified as the correspondent'
+                PARAMETER_INVALID:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'PARAMETER_INVALID'
+                    errorMessage: 'One or more parameters are invalid'
+        '403':
+          description: Authorization Failure. Please check your authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              examples:
+                AUTHORIZATION_ERROR:
+                  value:
+                    message: Forbidden
+        '404':
+          description: Yango Partner Account ID Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ACCOUNT_NOT_FOUND:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'ACCOUNT_NOT_FOUND'
+                    errorMessage: Yango Partner Account ID Not Found
+        '409':
+          description: The payoutId is duplicate. Please use a unique id for each payout request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                DUPLICATE_IGNORED:
+                  value:
+                    errorId: daa495f0-541d-4192-b636-a8877b25a510
+                    errorCode: 'DUPLICATE_IGNORED'
+                    errorMessage: The payout request has been ignored as a duplicate of an already accepted payout request.
+        '429':
+          description: Too Many Requests. You have exceeded the rate limit for this service.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                RATE_LIMIT:
+                  value:
+                    errorId: daa495f0-541d-4192-b636-a8877b25a510
+                    errorCode: 'RATE_LIMIT'
+                    errorMessage: The number of allowed requests within a certain time period are exceeded
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INTERNAL_SERVER_ERROR:
+                  value:
+                    errorId: d428a89e-fa8b-42b8-ba20-68be20d50af1
+                    errorCode: 'INTERNAL_SERVER_ERROR'
+                    errorMessage: Internal error
+
+  /api/v1/payouts/{accountId}/{payoutId}:
+    get:
+      tags:
+        - payouts
+      summary: Get Payout Status and Details
+      description: |
+        Get payout transaction status and payout details by the `accountId` of the Yango Partner and the `payoutId` of the payout that you have specified in your initial payout request. 
+      operationId: getPayout
+      parameters:
+        - name: payoutId
+          in: path
+          description: <code>payoutId</code> which has been specified in PayoutCreationRequest.
+          required: true
+          style: simple
+          explode: false
+          schema:
+            minLength: 36
+            maxLength: 36
+            type: string
+            format: uuid
+        - name: accountId
+          in: path
+          description: <code>accountId</code> of the Yango Partner
+          required: true
+          style: simple
+          explode: false
+          schema:
+            minLength: 36
+            maxLength: 36
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Request has been processed by pawaPay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payout'
+              examples:
+                COMPLETED:
+                  value:
+                    payoutId: 8917c345-4791-4285-a416-62f24b6982db
+                    status: COMPLETED
+                    amount: '123.45'
+                    currency: ZMW
+                    country: ZMB
+                    correspondent: MTN_MOMO_ZMB
+                    msisdn: '256780334452'
+                    statementDescription: From ACME company
+                    created: '2020-10-19T08:17:01Z'
+                    receivedByRecipient: '2020-10-19T08:17:02Z'
+                    correspondentIds:
+                      SOME_CORRESPONDENT_ID: '12356789'
+                ACCEPTED:
+                  value:
+                    payoutId: 8917c345-4791-4285-a416-62f24b6982db
+                    status: ACCEPTED
+                    amount: '123.45'
+                    currency: ZMW
+                    country: ZMB
+                    correspondent: MTN_MOMO_ZMB
+                    msisdn: '256780334452'
+                    statementDescription: From ACME company
+                    created: '2020-10-19T08:17:01Z'
+                SUBMITTED:
+                  value:
+                    payoutId: 8917c345-4791-4285-a416-62f24b6982db
+                    status: SUBMITTED
+                    amount: '123.45'
+                    currency: ZMW
+                    country: ZMB
+                    correspondent: MTN_MOMO_ZMB
+                    msisdn: '256780334452'
+                    statementDescription: From ACME company
+                    created: '2020-10-19T08:17:01Z'
+                FAILED:
+                  value:
+                    payoutId: 8917c345-4791-4285-a416-62f24b6982db
+                    status: FAILED
+                    amount: '123.45'
+                    currency: ZMW
+                    country: ZMB
+                    correspondent: MTN_MOMO_ZMB
+                    msisdn: '256780334452'
+                    statementDescription: From ACME company
+                    created: '2020-10-19T08:17:01Z'
+                    failureReason:
+                      failureCode: RECIPIENT_NOT_FOUND
+                      failureMessage: Recipient not found
+        '403':
+          description: Authorization Failure. Please check your authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              examples:
+                AUTHORIZATION_ERROR:
+                  value:
+                    message: Forbidden
+        '404':
+          description: Payout or Account Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                PAYOUT_NOT_FOUND:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'PAYOUT_NOT_FOUND'
+                    errorMessage: payout not found
+                ACCOUNT_NOT_FOUND:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'ACCOUNT_NOT_FOUND'
+                    errorMessage: Yango Partner Account ID Not Found
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INTERNAL_SERVER_ERROR:
+                  value:
+                    errorId: d428a89e-fa8b-42b8-ba20-68be20d50af1
+                    errorCode: 'INTERNAL_SERVER_ERROR'
+                    errorMessage: Internal error
+
+  /api/v1/wallets/{accountId}:
+    get:
+      tags:
+        - payouts
+      summary: Get Partner's Wallets & Balance
+      description: |
+        Get the list of the wallets and their balances for each partner using `accountId`. Please note that while a typical Yango partner probably has only one wallet, this API returns an array of wallets as in pawaPay each merchant can have multiple wallets.  
+      operationId: getWallets
+      parameters:
+        - name: accountId
+          in: path
+          description: <code>accountId</code> of the Yango Partner
+          required: true
+          style: simple
+          explode: false
+          schema:
+            minLength: 36
+            maxLength: 36
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type:
+                  array
+                items:
+                  $ref: '#/components/schemas/Wallet'
+        '404':
+          description: Account Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ACCOUNT_NOT_FOUND:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'ACCOUNT_NOT_FOUND'
+                    errorMessage: Yango Partner Account ID Not Found
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INTERNAL_SERVER_ERROR:
+                  value:
+                    errorId: d428a89e-fa8b-42b8-ba20-68be20d50af1
+                    errorCode: 'INTERNAL_SERVER_ERROR'
+                    errorMessage: Internal error
+
+  /api/v1/transfer/{accountId}:
+    post:
+      tags:
+        - other
+      summary: Transfer funds
+      description: |
+        Transfer funds from a Partner's pawaPay escrow wallet to either partner's standard wallet or to Yango Deli's wallet. This operation is synchronous.
+      operationId: createTransfer
+      parameters:
+        - name: accountId
+          in: path
+          description: <code>accountId</code> of the Yango Partner which has been previously provided by pawaPay during the setup.
+          required: true
+          style: simple
+          explode: false
+          schema:
+            minLength: 36
+            maxLength: 36
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferCreationRequest'
+      responses:
+        '201':
+          description: Successful Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+              examples:
+                SUCCESS:
+                  value:
+                    status: COMPLETED
+                    createdAt: "2024-10-12T15:04:27Z"
+        '400':
+          description: The request payload is invalid or the funds are insufficient
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferErrorResponse'
+              examples:
+                NOT_ENOUGH_FUNDS:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    failureCode: NOT_ENOUGH_FUNDS
+                    failureMessage: "There is not enough funds on your wallet to transfer 100000000 GHS."
+                INVALID_INPUT:
+                  value:
+                    errorId: 11111111-2222-3333-4444-555555555555
+                    failureCode: INVALID_INPUT
+                    failureMessage: "Invalid input"
+                AMOUNT_TOO_LOW:
+                  value:
+                    errorId: 11111111-2222-3333-4444-666666666666
+                    failureCode: AMOUNT_TOO_LOW
+                    failureMessage: "Transfer amount is too low."
+                OTHER_ERROR:
+                  value:
+                    errorId: 11111111-2222-3333-4444-777777777777
+                    failureCode: OTHER_ERROR
+                    failureMessage: "An unknown error occurred."
+        '403':
+          description: Authorization Failure. Please check your authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              examples:
+                AUTHORIZATION_ERROR:
+                  value:
+                    message: Forbidden
+        '404':
+          description: Yango Partner Account ID Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ACCOUNT_NOT_FOUND:
+                  value:
+                    errorId: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+                    errorCode: 'ACCOUNT_NOT_FOUND'
+                    errorMessage: Yango Partner Account ID Not Found
+        '409':
+          description: The transferId is duplicate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                DUPLICATE_IGNORED:
+                  value:
+                    errorId: daa495f0-541d-4192-b636-a8877b25a510
+                    errorCode: 'DUPLICATE_IGNORED'
+                    errorMessage: The payout request has been ignored as a duplicate of an already accepted payout request.
+        '429':
+          description: Too Many Requests. You have exceeded the rate limit for this service.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                RATE_LIMIT:
+                  value:
+                    errorId: daa495f0-541d-4192-b636-a8877b25a510
+                    errorCode: 'RATE_LIMIT'
+                    errorMessage: The number of allowed requests within a certain time period are exceeded
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INTERNAL_SERVER_ERROR:
+                  value:
+                    errorId: d428a89e-fa8b-42b8-ba20-68be20d50af1
+                    errorCode: 'INTERNAL_SERVER_ERROR'
+                    errorMessage: Internal error
+
+components:
+  schemas:
+    Amount:
+      minLength: 1
+      maxLength: 23
+      type: string
+      pattern: ^([0]|([1-9][0-9]{0,17}))([.][0-9]{0,3}[1-9])?$
+      description: |
+        The amount to be paid or transferred. Please use a maximum of 2 decimal places. 
+
+        <p>Permitted samples:<br>
+        5, 5.0, 5.00, 5.5, 5.50, 5.55, 0.5
+        <p>
+        Not permitted samples:<br>
+        5., 5.55555, 5555555555555555555, .5, -5.5, 00.5, 00.00
+      example: '15.21'
+    ErrorResponse:
+      required:
+        - errorId
+        - errorCode
+        - errorMessage
+      type: object
+      properties:
+        errorId:
+          maxLength: 36
+          type: string
+          description: A unique error ID in pawaPay system.
+          example: 63743264-7292-11ea-bc55-0242ac130003
+        errorCode:
+          type: string
+          description: pawaPay internal error code.
+          example: "1"
+        errorMessage:
+          type: string
+          description: Error message.
+          example: Internal error
+    AuthResponse:
+      required:
+        - message
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error Message
+          example: Missing Authentication Token
+
+    Payout:
+      required:
+        - payoutId
+        - status
+        - amount
+        - currency
+        - country
+        - correspondent
+        - msisdn
+        - created
+      type: object
+      properties:
+        payoutId:
+          minLength: 36
+          maxLength: 36
+          type: string
+          format: uuid
+          description: A merchant payout identifier which has been specified in <code>PayoutCreationRequest</code>.
+          example: f4401bd2-1568-4140-bf2d-eb77d2b2b639
+        status:
+          $ref: '#/components/schemas/PayoutStatus'
+        amount:
+          $ref: '#/components/schemas/Amount'
+        currency:
+          $ref: '#/components/schemas/Currency'
+        country:
+          $ref: '#/components/schemas/Country'
+        correspondent:
+          $ref: '#/components/schemas/Correspondent'
+        msisdn:
+          $ref: '#/components/schemas/Msisdn'
+        statementDescription:
+          maxLength: 22
+          type: string
+          description: The message that will be sent to the recipient of this payout.
+          example: Up to 22 chars note
+        created:
+          type: string
+          description: Payout initiation timestamp by pawaPay. Format defined by 'date-time' in RFC3339 section 5.6 (https://tools.ietf.org/html/rfc3339#section-5.6)
+          format: date-time
+          example: '2020-02-21T17:32:29Z'
+        receivedByRecipient:
+          type: string
+          description: When the payment was received by the recipient. Format defined by 'date-time' in RFC3339 section 5.6 (https://tools.ietf.org/html/rfc3339#section-5.6)
+          format: date-time
+          example: '2020-02-21T17:32:30Z'
+        correspondentIds:
+          type: object
+          additionalProperties:
+            type: string
+          description: The ids used by the mobile network operator to unqiuely identify this payment
+          example:
+            MTN_INIT: ABC123
+            MTN_FINAL: DEF456
+        failureReason:
+          $ref: '#/components/schemas/PayoutFailureReason'
+    PayoutCreationRequest:
+      required:
+        - payoutId
+        - amount
+        - msisdn
+      type: object
+      properties:
+        payoutId:
+          minLength: 36
+          maxLength: 36
+          type: string
+          format: uuid
+          description: An UUIDv4 based ID specified by the merchant, that uniquely identifies the payout.
+          example: f4401bd2-1568-4140-bf2d-eb77d2b2b639
+        amount:
+          $ref: '#/components/schemas/Amount'
+        msisdn:
+          $ref: '#/components/schemas/Msisdn'
+        statementDescription:
+          minLength: 4
+          maxLength: 22
+          type: string
+          pattern: ^[a-zA-Z0-9 ]+$
+          description: The message that will be sent to the recipient of this payout.
+          example: Up to 22 chars note
+    PayoutFailureReason:
+      required:
+        - failureCode
+      type: object
+      properties:
+        failureCode:
+          type: string
+          description: |
+            Enumeration presenting details in case of failure: 
+            * `BALANCE_INSUFFICIENT` - The pawaPay wallet balance is insufficient to proceed with the payout. 
+            * `RECIPIENT_NOT_FOUND` - The financial address (phone number) specified as the receipient does not belong to the mobile netowrk operator (MNO) specified as the correspodent. 
+            * `RECIPIENT_NOT_ALLOWED_TO_RECEIVE` - The recipient has reached a limit on their wallet that stops them from being able to accept this payout. 
+            * `OTHER_ERROR` - Any other error. Please refer to `failureMessage`.
+          example: OTHER_ERROR
+          enum:
+            - BALANCE_INSUFFICIENT
+            - RECIPIENT_NOT_FOUND
+            - RECIPIENT_NOT_ALLOWED_TO_RECEIVE
+            - OTHER_ERROR
+        failureMessage:
+          type: string
+          description: Additional optional failure message
+          example: Recipient's address is blocked
+    PayoutStatus:
+      type: string
+      description: |
+        Enumeration presenting the status of the payout: 
+        * `ACCEPTED` - The payout request has been accepted by pawaPay for processing. 
+        * `SUBMITTED` - The payout request has been submitted to the mobile network operator (MNO) and is being processed. 
+        * `COMPLETED` - The payout request has been successful. **Final state.**
+        * `FAILED` - The payout request has failed. **Final state.**
+      enum:
+        - ACCEPTED
+        - SUBMITTED
+        - COMPLETED
+        - FAILED
+    Correspondent:
+      type: string
+      description: The correspondent code refers to the specific mobile network operator (MNO) this request should go to. You can find more information and all the supported correspondents [listed here.](#section/Using-the-API/Correspondents)
+      example: MTN_MOMO_ZMB
+    Country:
+      type: string
+      description: The ISO 3166-1 alpha-3, three character country code in upper case (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-3#Officially_assigned_code_elements)
+      example: ZMB
+    Currency:
+      type: string
+      description: The ISO 4217 three character currency code in upper case (https://en.wikipedia.org/wiki/ISO_4217#Active_codes)
+      example: ZMW
+    Msisdn:
+      type: string
+      description: |
+        The phone number of the receipient or payer. The format is (https://en.wikipedia.org/wiki/MSISDN). <p>MSISDN validation has following rules:
+         1. Only digits without whitespaces or any other separators or prefixes like '+'.
+         2. Should not start with zero.
+         3. Country code is mandatory.
+         4. Should not exceed or less than the valid length of specified country.
+         <p>Permitted samples for country code GHA:<br> 233558708954, 233558708955<br> <p>Not permitted samples for country code GHA:<br> +233558708954, 233 558 708954, 233-558-708954, 0233558708954, 233558708, 233558708954872, 999558708954, 37255870895
+      example: '256780334452'
+    Wallet:
+      type: object
+      properties:
+        accountId:
+          description: <code>accountId</code> of the Yango Partner which has been previously provided by pawaPay after partner's setup
+          type: string
+          format: uuid
+          example: fd43c8c6-78a7-411f-8537-9a939100c57d
+          minLength: 36
+          maxLength: 36
+        balance:
+          type: string
+          example: "241.72"
+          description: 'The amount of the balance for this wallet'
+        country:
+          $ref: '#/components/schemas/Country'
+        currency: 
+          $ref: '#/components/schemas/Currency'
+    Transfer:
+      required:
+        - status
+        - createdAt
+      type: object
+      properties:
+        status:
+          type: string
+          description: Transfer status
+          example: COMPLETED
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp of transfer creation
+          example: "2024-10-12T15:04:27Z"
+    TransferCreationRequest:
+      required:
+        - transferId
+        - amount
+        - to
+      type: object
+      properties:
+        transferId:
+          minLength: 36
+          maxLength: 36
+          type: string
+          format: uuid
+          description: UUIDv4 representing the uniqe id of this transfer
+          example: f4401bd2-1568-4140-bf2d-eb77d2b2b639
+        amount:
+          $ref: '#/components/schemas/Amount'
+        to:
+          type: string
+          description: Destination type (e.g. PARTNER or YANGO_DELI)
+          enum:
+            - PARTNER
+            - YANGO_DELI
+          example: PARTNER
+    TransferErrorResponse:
+      required:
+        - errorId
+        - failureCode
+        - failureMessage
+      type: object
+      properties:
+        errorId:
+          maxLength: 36
+          type: string
+          description: A unique error ID in pawaPay system.
+          example: 4f0d5e13-7e88-4cc6-827c-8c0640dc2cd3
+        failureCode:
+          type: string
+          description: A code indicating why the transfer failed.
+          example: NOT_ENOUGH_FUNDS
+        failureMessage:
+          type: string
+          description: A descriptive message about the failure
+          example: There is not enough funds on your wallet to transfer 100000000 GHS.
+
+  requestBodies:
+    PayoutCreationRequest:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PayoutCreationRequest'
+      required: true
+      TransferCreationRequest:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferCreationRequest'
+        required: true
+  
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+
+x-tagGroups:
+  - name: API Reference
+    tags:
+      - payouts
+      - other
